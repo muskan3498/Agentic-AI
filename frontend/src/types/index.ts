@@ -9,6 +9,7 @@ export interface ContextLayer {
   description: string
   enabled: boolean
   content: string
+  dummy_content: string
   token_estimate: number
   order: number
   collapsed: boolean

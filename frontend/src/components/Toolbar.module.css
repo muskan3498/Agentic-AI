@@ -78,6 +78,18 @@
   border: 1px solid transparent;
 }
 
+.uploadBtn {
+  position: relative;
+  overflow: hidden;
+}
+
+.hiddenInput {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
 .btnSecondary {
   background: rgba(255, 255, 255, 0.62);
   border-color: rgba(148, 163, 184, 0.28);

@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { useWorkbenchStore } from '../../store/workbenchStore'
 import { useLLMConfigStore } from '../../store/llmConfigStore'
 import { WorkbenchLayout } from '../../components/WorkbenchLayout'
@@ -11,7 +11,8 @@ import { RunHistoryTable } from '../../components/RunHistoryTable'
 import { ModelResponsePanel } from '../../components/ModelResponsePanel'
 import { LayerContentModal } from '../../components/LayerContentModal'
 import { ConfigureModal } from '../../components/ConfigureModal'
-import { CodingModeSelector } from '../../components/CodingModeSelector'
+import { ProjectDescriptionModal } from '../../components/ProjectDescriptionModal'
+import { useProjectDescriptionStore } from '../../store/projectDescriptionStore'
 import type { LayerType } from '../../types'
 import styles from './WorkbenchPage.module.css'
 
@@ -30,6 +31,7 @@ export function WorkbenchPage(): React.ReactElement {
     error,
     toggleLayer,
     updateLayerContent,
+    syncLayerContentSource,
     setShowAssembledPrompt,
     assemble,
     run,
@@ -38,7 +40,21 @@ export function WorkbenchPage(): React.ReactElement {
     clearError,
   } = useWorkbenchStore()
 
-  const { config: llmConfig, isConfigureOpen, codingMode, openConfigure, closeConfigure, saveConfig, setCodingMode } = useLLMConfigStore()
+  const {
+    config: llmConfig,
+    isConfigureOpen,
+    openConfigure,
+    closeConfigure,
+    saveConfig,
+    updateConfig,
+  } = useLLMConfigStore()
+  const {
+    description: projectDescription,
+    isOpen: isProjectDescriptionOpen,
+    openModal: openProjectDescription,
+    closeModal: closeProjectDescription,
+    saveDescription: saveProjectDescription,
+  } = useProjectDescriptionStore()
 
   const [openLayerModalId, setOpenLayerModalId] = useState<LayerType | null>(null)
   const [historyCollapsed, setHistoryCollapsed] = useState(false)
@@ -47,10 +63,19 @@ export function WorkbenchPage(): React.ReactElement {
   const enabledLayerCount = layers.filter((l) => l.enabled).length
   const selectedRunId = selectedRun?.run_id ?? null
 
+  useEffect(() => {
+    if (layers.length > 0) {
+      syncLayerContentSource(llmConfig)
+    }
+  }, [layers.length, llmConfig, syncLayerContentSource])
+
   const handleRun = async () => { await run() }
   const handleAssemble = async () => { await assemble(); setShowAssembledPrompt(true) }
   const handleSelectRun = (runId: number) => { void selectRun(runId) }
   const handleResetDemo = async () => { await resetDemo() }
+  const handleUploadProjectDescription = (content: string) => {
+    saveProjectDescription(content)
+  }
 
   const openLayer = openLayerModalId
     ? layers.find((l) => l.id === openLayerModalId) ?? null
@@ -65,6 +90,8 @@ export function WorkbenchPage(): React.ReactElement {
       onAssemble={handleAssemble}
       onToggleAssembledPrompt={() => setShowAssembledPrompt(!showAssembledPrompt)}
       onConfigure={openConfigure}
+      onProjectDescription={openProjectDescription}
+      onUploadProjectDescription={handleUploadProjectDescription}
       totalTokens={totalTokens}
       enabledLayerCount={enabledLayerCount}
     />
@@ -86,7 +113,6 @@ export function WorkbenchPage(): React.ReactElement {
           </button>
         </div>
       </div>
-      <CodingModeSelector selected={codingMode} onChange={setCodingMode} />
 
       {sortedLayers.map((layer, idx) => (
         <LayerCard
@@ -105,9 +131,9 @@ export function WorkbenchPage(): React.ReactElement {
     <>
       {error && (
         <div className={styles.errorBanner}>
-          <span className={styles.errorIcon}>⚠</span>
+          <span className={styles.errorIcon}>!</span>
           <span className={styles.errorText}>{error}</span>
-          <button className={styles.errorClose} onClick={clearError} aria-label="Dismiss">✕</button>
+          <button className={styles.errorClose} onClick={clearError} aria-label="Dismiss">x</button>
         </div>
       )}
 
@@ -127,7 +153,7 @@ export function WorkbenchPage(): React.ReactElement {
               onClick={() => setShowAssembledPrompt(false)}
               aria-label="Close"
             >
-              ✕
+              x
             </button>
           </div>
           <AssembledPromptPanel
@@ -138,14 +164,12 @@ export function WorkbenchPage(): React.ReactElement {
         </div>
       )}
 
-      {/* Model Response + Run History */}
       <div className={styles.responseHistoryGroup}>
         {selectedRun && !isRunning && (
           <ModelResponsePanel result={selectedRun} expanded={historyCollapsed} />
         )}
 
         <div className={`${styles.historySection}${historyCollapsed ? ` ${styles.historySectionCollapsed}` : ''}`}>
-          {/* Entire header row is clickable to toggle */}
           <div
             className={styles.historySectionHeader}
             style={historyCollapsed ? { borderBottom: 'none' } : undefined}
@@ -161,7 +185,7 @@ export function WorkbenchPage(): React.ReactElement {
                 {runHistory.length} {runHistory.length === 1 ? 'run' : 'runs'}
               </span>
               <span className={styles.chevron} aria-hidden>
-                {historyCollapsed ? '›' : '⌄'}
+                {historyCollapsed ? '>' : 'v'}
               </span>
             </div>
           </div>
@@ -210,7 +234,15 @@ export function WorkbenchPage(): React.ReactElement {
         isOpen={isConfigureOpen}
         config={llmConfig}
         onSave={saveConfig}
+        onUpdateConfig={updateConfig}
         onClose={closeConfigure}
+      />
+
+      <ProjectDescriptionModal
+        isOpen={isProjectDescriptionOpen}
+        description={projectDescription}
+        onSave={saveProjectDescription}
+        onClose={closeProjectDescription}
       />
     </>
   )

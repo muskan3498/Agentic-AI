@@ -8,7 +8,11 @@ from __future__ import annotations
 
 import copy
 import random
+import shlex
+import time
 from typing import List, Optional
+from urllib import error as urllib_error
+from urllib import request as urllib_request
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
@@ -90,6 +94,20 @@ class HistoryRow(BaseModel):
     tokens: int
     latency_ms: int
     provider: str
+
+
+class TestConnectionRequest(BaseModel):
+    curl_command: str = Field(min_length=1)
+
+
+class TestConnectionResponse(BaseModel):
+    ok: bool
+    method: str
+    url: str
+    status_code: Optional[int] = None
+    message: str
+    response_preview: Optional[str] = None
+    duration_ms: int
 
 
 # ---------------------------------------------------------------------------
@@ -249,6 +267,63 @@ def _latency(active: List[str]) -> int:
     return 900 + (_token_count(active) * 4) + random.randint(50, 250)
 
 
+def _parse_curl_command(curl_command: str) -> tuple[str, str, dict[str, str], bytes | None]:
+    try:
+        parts = shlex.split(curl_command, posix=True)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=f"Invalid curl command: {exc}") from exc
+
+    if not parts or parts[0].lower() != "curl":
+        raise HTTPException(status_code=400, detail="Curl command must start with 'curl'")
+
+    method = "GET"
+    headers: dict[str, str] = {}
+    body_parts: list[str] = []
+    url: Optional[str] = None
+
+    idx = 1
+    while idx < len(parts):
+        part = parts[idx]
+
+        if part in {"-X", "--request"}:
+            idx += 1
+            if idx >= len(parts):
+                raise HTTPException(status_code=400, detail="Missing HTTP method after -X/--request")
+            method = parts[idx].upper()
+        elif part in {"-H", "--header"}:
+            idx += 1
+            if idx >= len(parts):
+                raise HTTPException(status_code=400, detail="Missing header value after -H/--header")
+            header_value = parts[idx]
+            if ":" not in header_value:
+                raise HTTPException(status_code=400, detail=f"Invalid header format: {header_value}")
+            name, value = header_value.split(":", 1)
+            headers[name.strip()] = value.strip()
+        elif part in {"-d", "--data", "--data-raw", "--data-binary"}:
+            idx += 1
+            if idx >= len(parts):
+                raise HTTPException(status_code=400, detail="Missing request body after data flag")
+            body_parts.append(parts[idx])
+            if method == "GET":
+                method = "POST"
+        elif not part.startswith("-") and url is None:
+            url = part
+        idx += 1
+
+    if not url:
+        raise HTTPException(status_code=400, detail="Curl command must include a URL")
+
+    body = "\n".join(body_parts).encode("utf-8") if body_parts else None
+    return method, url, headers, body
+
+
+def _preview_response(raw: bytes) -> str:
+    text = raw.decode("utf-8", errors="replace").strip()
+    if len(text) > 500:
+        return f"{text[:500]}..."
+    return text
+
+
 # ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
@@ -353,3 +428,49 @@ def evaluate(payload: EvaluateRequest) -> EvaluateResponse:
 
     _details[run_id] = result
     return result
+
+
+@router.post("/test-connection", response_model=TestConnectionResponse)
+def test_connection(payload: TestConnectionRequest) -> TestConnectionResponse:
+    method, url, headers, body = _parse_curl_command(payload.curl_command)
+    req = urllib_request.Request(url=url, data=body, method=method)
+
+    for name, value in headers.items():
+        req.add_header(name, value)
+
+    started = time.perf_counter()
+
+    try:
+        with urllib_request.urlopen(req, timeout=10) as response:
+            duration_ms = int((time.perf_counter() - started) * 1000)
+            preview = _preview_response(response.read(2048))
+            return TestConnectionResponse(
+                ok=True,
+                method=method,
+                url=url,
+                status_code=response.status,
+                message=f"Connection succeeded with HTTP {response.status}",
+                response_preview=preview or None,
+                duration_ms=duration_ms,
+            )
+    except urllib_error.HTTPError as exc:
+        duration_ms = int((time.perf_counter() - started) * 1000)
+        preview = _preview_response(exc.read(2048))
+        return TestConnectionResponse(
+            ok=False,
+            method=method,
+            url=url,
+            status_code=exc.code,
+            message=f"Endpoint responded with HTTP {exc.code}",
+            response_preview=preview or None,
+            duration_ms=duration_ms,
+        )
+    except urllib_error.URLError as exc:
+        duration_ms = int((time.perf_counter() - started) * 1000)
+        return TestConnectionResponse(
+            ok=False,
+            method=method,
+            url=url,
+            message=f"Connection failed: {exc.reason}",
+            duration_ms=duration_ms,
+        )

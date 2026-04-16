@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { workbenchApi } from '../api/workbenchApi'
 import { FALLBACK_LAYERS, FALLBACK_HISTORY, FALLBACK_BEST_RUN } from '../data/demoFallback'
+import type { LLMConfig } from './llmConfigStore'
 import type {
   ApiEvaluateResponse,
   ApiHistoryRow,
@@ -33,6 +34,7 @@ function apiLayerToContextLayer(dto: ApiLayerDTO, index: number): ContextLayer {
     description: dto.subtitle,
     enabled: dto.always_on || DEFAULT_ENABLED.has(dto.key),
     content: dto.content,
+    dummy_content: dto.content,
     token_estimate: dto.tokens,
     order: index,
     collapsed: index > 1,
@@ -115,6 +117,7 @@ interface WorkbenchStore {
   toggleLayer: (id: LayerType) => void
   updateLayerContent: (id: LayerType, content: string) => void
   toggleLayerCollapse: (id: LayerType) => void
+  syncLayerContentSource: (config: LLMConfig) => void
   setTokenBudgetMax: (max: number) => void
   setShowAssembledPrompt: (show: boolean) => void
   assemble: () => Promise<void>
@@ -162,6 +165,36 @@ export const useWorkbenchStore = create<WorkbenchStore>((set, get) => ({
       l.id === id ? { ...l, collapsed: !l.collapsed } : l,
     )
     set({ layers })
+  },
+
+  syncLayerContentSource: (config) => {
+    const currentLayers = get().layers
+    if (currentLayers.length === 0) return
+
+    const actualDataByLayer: Partial<Record<LayerType, string>> = {
+      system: config.actualData.system,
+      history: config.actualData.history,
+      knowledge: config.actualData.knowledge,
+      tools: config.actualData.tools,
+      state: config.actualData.state,
+    }
+
+    const layers = currentLayers.map((layer) => {
+      if (config.dataSource === 'dummy') {
+        return layer.content === layer.dummy_content
+          ? layer
+          : { ...layer, content: layer.dummy_content }
+      }
+
+      const nextContent = actualDataByLayer[layer.id] ?? layer.content
+      return layer.content === nextContent ? layer : { ...layer, content: nextContent }
+    })
+
+    const changed = layers.some((layer, index) => layer !== currentLayers[index])
+    if (!changed) return
+
+    const { perLayerTokens, totalTokens } = computeTokens(layers)
+    set({ layers, perLayerTokens, totalTokens })
   },
 
   setTokenBudgetMax: (max) => set({ tokenBudgetMax: max }),

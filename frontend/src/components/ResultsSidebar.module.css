@@ -92,6 +92,10 @@
 .cardHeader {
   padding: 11px 13px 9px;
   border-bottom: 1px solid var(--border-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
 }
 
 .cardTitle {
@@ -100,6 +104,43 @@
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--text-muted);
+}
+
+.cardActions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.cardActionBtn,
+.cardIconBtn {
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  background: rgba(248, 250, 255, 0.9);
+  color: var(--text-secondary);
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.cardActionBtn {
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 9px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.cardActionBtnPrimary {
+  background: rgba(111, 116, 255, 0.12);
+  color: var(--accent);
+  border-color: rgba(111, 116, 255, 0.22);
+}
+
+.cardIconBtn {
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  font-size: 18px;
+  line-height: 1;
 }
 
 .cardBody {
@@ -162,6 +203,52 @@
   display: flex;
   flex-direction: column;
   gap: 0;
+}
+
+.editRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 58px 24px 28px;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 0;
+  border-bottom: 1px solid rgba(220, 228, 248, 0.7);
+}
+
+.editRow:last-child {
+  border-bottom: none;
+}
+
+.dimensionInput,
+.scoreInput {
+  height: 34px;
+  border: 1px solid rgba(148, 163, 184, 0.26);
+  border-radius: 10px;
+  background: rgba(248, 250, 255, 0.92);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 12px;
+  outline: none;
+}
+
+.dimensionInput {
+  padding: 0 10px;
+}
+
+.scoreInput {
+  padding: 0 8px;
+  text-align: center;
+}
+
+.dimensionInput:focus,
+.scoreInput:focus {
+  border-color: rgba(111, 116, 255, 0.45);
+  box-shadow: 0 0 0 3px rgba(111, 116, 255, 0.1);
+}
+
+.scoreSuffix {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-muted);
 }
 
 /* Insight box */

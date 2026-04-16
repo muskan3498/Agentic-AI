@@ -1,10 +1,36 @@
 import { create } from 'zustand'
 
 export type LLMProvider = 'mock' | 'gemini' | 'openai' | 'nvidia'
+export type DataSource = 'dummy' | 'actual'
 export type CodingMode = 'vibe' | 'agentic'
+
+export interface ActualDataConfig {
+  system: string
+  history: string
+  knowledge: string
+  tools: string
+  state: string
+}
+
+export interface ActualDataConnection {
+  id: string
+  curlCommand: string
+  lastStatus: 'idle' | 'success' | 'error'
+  lastMessage: string
+  lastStatusCode?: number
+  lastResponsePreview?: string
+}
+
+export type ActualDataConnectionMap = Record<keyof ActualDataConfig, ActualDataConnection[]>
+export type ActualDataInputMode = 'manual' | 'api' | null
+export type ActualDataInputModeMap = Record<keyof ActualDataConfig, ActualDataInputMode>
 
 export interface LLMConfig {
   provider: LLMProvider
+  dataSource: DataSource
+  actualData: ActualDataConfig
+  actualDataConnections: ActualDataConnectionMap
+  actualDataInputMode: ActualDataInputModeMap
   geminiApiKey: string
   geminiModel: string
   openaiApiKey: string
@@ -23,6 +49,7 @@ interface LLMConfigStore {
   openConfigure: () => void
   closeConfigure: () => void
   saveConfig: (config: LLMConfig) => void
+  updateConfig: (config: LLMConfig) => void
   setCodingMode: (mode: CodingMode) => void
 }
 
@@ -43,8 +70,42 @@ function saveMode(mode: CodingMode): void {
   try { localStorage.setItem(MODE_KEY, mode) } catch { /* ignore */ }
 }
 
+function createEmptyActualData(): ActualDataConfig {
+  return {
+    system: '',
+    history: '',
+    knowledge: '',
+    tools: '',
+    state: '',
+  }
+}
+
+function createEmptyActualDataConnections(): ActualDataConnectionMap {
+  return {
+    system: [],
+    history: [],
+    knowledge: [],
+    tools: [],
+    state: [],
+  }
+}
+
+function createEmptyActualDataInputMode(): ActualDataInputModeMap {
+  return {
+    system: 'manual',
+    history: null,
+    knowledge: null,
+    tools: null,
+    state: null,
+  }
+}
+
 const DEFAULT_CONFIG: LLMConfig = {
   provider: 'mock',
+  dataSource: 'dummy',
+  actualData: createEmptyActualData(),
+  actualDataConnections: createEmptyActualDataConnections(),
+  actualDataInputMode: createEmptyActualDataInputMode(),
   geminiApiKey: '',
   geminiModel: 'gemini-2.5-flash',
   openaiApiKey: '',
@@ -60,7 +121,23 @@ function loadFromStorage(): LLMConfig {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (!raw) return DEFAULT_CONFIG
-    return { ...DEFAULT_CONFIG, ...JSON.parse(raw) }
+    const parsed = JSON.parse(raw) as Partial<LLMConfig>
+    return {
+      ...DEFAULT_CONFIG,
+      ...parsed,
+      actualData: {
+        ...createEmptyActualData(),
+        ...parsed.actualData,
+      },
+      actualDataConnections: {
+        ...createEmptyActualDataConnections(),
+        ...parsed.actualDataConnections,
+      },
+      actualDataInputMode: {
+        ...createEmptyActualDataInputMode(),
+        ...parsed.actualDataInputMode,
+      },
+    }
   } catch {
     return DEFAULT_CONFIG
   }
@@ -85,6 +162,11 @@ export const useLLMConfigStore = create<LLMConfigStore>((set) => ({
   saveConfig: (config) => {
     saveToStorage(config)
     set({ config, isConfigureOpen: false })
+  },
+
+  updateConfig: (config) => {
+    saveToStorage(config)
+    set({ config })
   },
 
   setCodingMode: (mode) => {
